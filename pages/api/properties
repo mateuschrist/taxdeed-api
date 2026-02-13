@@ -1,0 +1,83 @@
+import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
+
+const BodySchema = z.object({
+  node: z.string().min(1),
+  county: z.string().optional(),
+  state: z.string().optional(),
+  pdf_url: z.string().optional(),
+  tax_sale_id: z.string().optional(),
+  parcel_number: z.string().optional(),
+  sale_date: z.string().optional(),
+  opening_bid: z.union([z.string(), z.number()]).optional(),
+  deed_status: z.string().optional(),
+  applicant_name: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state_address: z.string().optional(),
+  zip: z.string().optional(),
+  address_source_marker: z.string().optional(),
+  status: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+function normalizeBid(opening_bid) {
+  if (opening_bid === undefined || opening_bid === null || opening_bid === "") return null;
+  if (typeof opening_bid === "number") return opening_bid;
+  const cleaned = String(opening_bid).replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ success: false, error: "Method not allowed" });
+
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+
+  if (!process.env.INGEST_API_TOKEN || token !== process.env.INGEST_API_TOKEN) {
+    return res.status(401).json({ success: false, error: "Unauthorized" });
+  }
+
+  let data;
+  try {
+    data = BodySchema.parse(req.body);
+  } catch (e) {
+    return res.status(400).json({ success: false, error: "Invalid payload" });
+  }
+
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
+  const payload = {
+    node: data.node,
+    county: data.county ?? "Orange",
+    state: data.state ?? "FL",
+    pdf_url: data.pdf_url ?? null,
+    tax_sale_id: data.tax_sale_id ?? null,
+    parcel_number: data.parcel_number ?? null,
+    sale_date: data.sale_date ?? null,
+    opening_bid: normalizeBid(data.opening_bid),
+    deed_status: data.deed_status ?? null,
+    applicant_name: data.applicant_name ?? null,
+    address: data.address ?? null,
+    city: data.city ?? null,
+    state_address: data.state_address ?? null,
+    zip: data.zip ?? null,
+    address_source_marker: data.address_source_marker ?? null,
+    status: data.status ?? "new",
+    notes: data.notes ?? null,
+  };
+
+  const { data: result, error } = await supabase
+    .from("properties")
+    .upsert(payload, { onConflict: "node" })
+    .select("id,node")
+    .single();
+
+  if (error) {
+    return res.status(500).json({ success: false, error: "DB error", message: error.message });
+  }
+
+  return res.status(200).json({ success: true, action: "upserted", id: result.id, node: result.node });
+}
