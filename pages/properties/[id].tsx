@@ -27,11 +27,8 @@ type Property = {
 
 export default function PropertyDetail() {
   const router = useRouter();
-  const { id } = router.query;
-
-  if (!supabase) {
-    return <div style={{ padding: 40 }}>Missing Supabase env vars.</div>;
-  }
+  const rawId = router.query.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,10 +38,11 @@ export default function PropertyDetail() {
   const [status, setStatus] = useState<string>("new");
   const [notes, setNotes] = useState<string>("");
 
+  // auth guard
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) router.push("/login");
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) router.push("/login");
     })();
   }, [router]);
 
@@ -54,10 +52,12 @@ export default function PropertyDetail() {
     setError("");
     try {
       const res = await fetch(`/api/properties/${id}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
-      // Aceita tanto {ok:true,data:{...}} quanto objeto direto
+      if (!res.ok) {
+        throw new Error(data?.message || `HTTP ${res.status}`);
+      }
+
       const record: Property | null = data?.data ?? data ?? null;
       if (!record) throw new Error("Not found");
 
@@ -87,7 +87,13 @@ export default function PropertyDetail() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, notes }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.message || `HTTP ${res.status}`);
+      }
+
       await load();
     } catch (e: any) {
       setError(e?.message || "Failed to save");
