@@ -4,53 +4,48 @@ import { useRouter } from "next/router";
 
 export default function Login() {
   const router = useRouter();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
 
   async function handleLogin() {
-    setError("");
-    setMessage("");
-    setLoading(true);
+    setMsg("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
       password,
     });
 
-    setLoading(false);
+    console.log("LOGIN data:", data);
+    console.log("LOGIN error:", error);
 
     if (error) {
-      setError(error.message);
+      setMsg(error.message);
       return;
     }
 
     router.push("/dashboard");
   }
 
-  async function handleForgotPassword() {
-    setError("");
-    setMessage("");
+  async function handleReset() {
+    setMsg("");
 
-    if (!email) {
-      setError("Digite seu email primeiro.");
-      return;
-    }
+    const redirectTo = `${window.location.origin}/login`;
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo:
-        "https://taxdeed-api-mateus-projects-01756e16.vercel.app/reset-password",
-    });
+    const { data, error } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      { redirectTo }
+    );
+
+    console.log("RESET data:", data);
+    console.log("RESET error:", error);
 
     if (error) {
-      setError(error.message);
+      setMsg(error.message);
       return;
     }
 
-    setMessage("Email de recuperação enviado. Verifique sua caixa de entrada.");
+    setMsg("Email de reset enviado (verifique spam).");
   }
 
   return (
@@ -58,11 +53,10 @@ export default function Login() {
       <h1>Admin Login</h1>
 
       <input
-        type="email"
         placeholder="Email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        style={{ width: "100%", padding: 10, marginBottom: 10 }}
+        style={{ width: "100%", marginBottom: 10 }}
       />
 
       <input
@@ -70,24 +64,18 @@ export default function Login() {
         placeholder="Password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        style={{ width: "100%", padding: 10, marginBottom: 10 }}
+        style={{ width: "100%", marginBottom: 10 }}
       />
 
-      <button onClick={handleLogin} disabled={loading}>
-        {loading ? "Entrando..." : "Login"}
+      <button onClick={handleLogin} style={{ width: "100%", marginBottom: 10 }}>
+        Login
       </button>
 
-      <div style={{ marginTop: 15 }}>
-        <button
-          onClick={handleForgotPassword}
-          style={{ fontSize: 14, background: "none", border: "none", color: "blue", cursor: "pointer" }}
-        >
-          Forgot password?
-        </button>
-      </div>
+      <button onClick={handleReset} style={{ width: "100%" }}>
+        Esqueci a senha (Reset)
+      </button>
 
-      {message && <p style={{ color: "green", marginTop: 15 }}>{message}</p>}
-      {error && <p style={{ color: "red", marginTop: 15 }}>{error}</p>}
+      {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
     </div>
   );
 }
