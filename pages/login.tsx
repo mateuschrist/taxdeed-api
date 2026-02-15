@@ -4,36 +4,69 @@ import { useRouter } from "next/router";
 
 export default function Login() {
   const router = useRouter();
-  const [email,setEmail] = useState("");
-  const [password,setPassword] = useState("");
-  const [error,setError] = useState("");
+
+  // ✅ checar supabase ANTES de qualquer uso
+  if (!supabase) {
+    return <div style={{ padding: 40 }}>Missing Supabase env vars.</div>;
+  }
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
   async function handleLogin() {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    setError("");
+    setLoading(true);
 
-    if (error) return setError(error.message);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    router.push("/dashboard");
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      router.push("/dashboard");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <div style={{padding:40}}>
-      <h1>Admin Login</h1>
+    <div style={{ padding: 40, maxWidth: 420 }}>
+      <h1 style={{ marginTop: 0 }}>Admin Login</h1>
 
-      <input placeholder="Email" onChange={e=>setEmail(e.target.value)} />
-      <br/>
-      <input type="password" placeholder="Password" onChange={e=>setPassword(e.target.value)} />
-      <br/>
+      <div style={{ display: "grid", gap: 10 }}>
+        <input
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ padding: 10 }}
+          autoComplete="email"
+        />
 
-      <button onClick={handleLogin}>Login</button>
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={{ padding: 10 }}
+          autoComplete="current-password"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleLogin();
+          }}
+        />
 
-      {error && <p>{error}</p>}
+        <button onClick={handleLogin} disabled={loading} style={{ padding: 10 }}>
+          {loading ? "Logging in..." : "Login"}
+        </button>
+
+        {error && <p style={{ color: "red", margin: 0 }}>{error}</p>}
+      </div>
     </div>
   );
-  if (!supabase) {
-  return <div style={{ padding: 40 }}>Missing Supabase env vars.</div>;
-}
 }
