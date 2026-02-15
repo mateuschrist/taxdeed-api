@@ -2,32 +2,70 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useRouter } from "next/router";
 
+type CountResp = { ok?: boolean; count?: number; message?: string; error?: any };
+
 export default function Dashboard() {
   const router = useRouter();
   const [count, setCount] = useState<number | null>(null);
   const [missing, setMissing] = useState<number | null>(null);
-
-  if (!supabase) {
-    return <div style={{ padding: 40 }}>Missing Supabase env vars.</div>;
-  }
+  const [err, setErr] = useState<string>("");
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) router.push("/login");
+      setErr("");
+
+      // 1) Check auth
+      const { data, error } = await supabase.auth.getUser();
+
+      if (cancelled) return;
+
+      if (error) {
+        setErr(`Auth error: ${error.message}`);
+        router.push("/login");
+        return;
+      }
+
+      if (!data.user) {
+        router.push("/login");
+        return;
+      }
+
+      // 2) Fetch stats ONLY after auth ok
+      async function getCount(url: string) {
+        const r = await fetch(url);
+        const j: CountResp = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          throw new Error(j?.message || `HTTP ${r.status}`);
+        }
+        return j?.count ?? 0;
+      }
+
+      try {
+        const total = await getCount("/api/properties?limit=1");
+        if (!cancelled) setCount(total);
+      } catch (e: any) {
+        if (!cancelled) {
+          setCount(0);
+          setErr((prev) => prev || `Total lots error: ${e?.message || String(e)}`);
+        }
+      }
+
+      try {
+        const miss = await getCount("/api/properties?has_address=false&limit=1");
+        if (!cancelled) setMissing(miss);
+      } catch (e: any) {
+        if (!cancelled) {
+          setMissing(null);
+          setErr((prev) => prev || `Missing address error: ${e?.message || String(e)}`);
+        }
+      }
     })();
 
-    // total
-    fetch("/api/properties?limit=1")
-      .then((r) => r.json())
-      .then((d) => setCount(d?.count ?? 0))
-      .catch(() => setCount(0));
-
-    // missing address (se existir filtro has_address=false no backend)
-    fetch("/api/properties?has_address=false&limit=1")
-      .then((r) => r.json())
-      .then((d) => setMissing(d?.count ?? 0))
-      .catch(() => setMissing(null));
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function logout() {
@@ -38,6 +76,12 @@ export default function Dashboard() {
   return (
     <div style={{ padding: 40 }}>
       <h1>Dashboard</h1>
+
+      {err && (
+        <div style={{ marginTop: 12, padding: 12, border: "1px solid #f99", borderRadius: 10 }}>
+          <b>Warning:</b> {err}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
         <div style={{ border: "1px solid #ddd", padding: 16, borderRadius: 10, minWidth: 220 }}>
