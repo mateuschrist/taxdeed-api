@@ -20,17 +20,24 @@ type Property = {
   updated_at: string | null;
 };
 
+type ApiResp = {
+  ok: boolean;
+  data: Property[];
+  count: number;
+  message?: string;
+  debug?: any;
+};
+
 export default function PropertiesPage() {
   const router = useRouter();
 
-  if (!supabase) {
-    return <div style={{ padding: 40 }}>Missing Supabase env vars.</div>;
-  }
+  const [authChecked, setAuthChecked] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<Property[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [error, setError] = useState<string>("");
+  const [debug, setDebug] = useState<any>(null);
 
   // filters
   const [status, setStatus] = useState<string>("");
@@ -42,23 +49,63 @@ export default function PropertiesPage() {
     if (status) params.set("status", status);
     if (search) params.set("search", search);
     if (hasAddress) params.set("has_address", hasAddress);
-    // opcional: limitar
     params.set("limit", "200");
     return `/api/properties?${params.toString()}`;
   }, [status, search, hasAddress]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (cancelled) return;
+
+      if (error || !data.user) {
+        router.push("/login");
+        return;
+      }
+
+      setAuthChecked(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
   async function load() {
     setLoading(true);
     setError("");
+    setDebug(null);
+
     try {
       const res = await fetch(queryUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const text = await res.text();
 
-      if (!data?.ok) throw new Error("API returned ok=false");
-      const list: Property[] = data.data ?? [];
+      let json: ApiResp | any = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        // backend returned HTML or plain text
+      }
+
+      if (!res.ok) {
+        const msg =
+          json?.message ||
+          json?.error ||
+          (text?.slice(0, 300) || `HTTP ${res.status}`);
+        setDebug({ status: res.status, bodyPreview: text?.slice(0, 800) });
+        throw new Error(msg);
+      }
+
+      if (!json?.ok) {
+        setDebug(json?.debug || json);
+        throw new Error(json?.message || "API returned ok=false");
+      }
+
+      const list: Property[] = json.data ?? [];
       setRows(list);
-      setTotal(data.count ?? list.length);
+      setTotal(json.count ?? list.length);
     } catch (e: any) {
       setError(e?.message || "Failed to load properties");
       setRows([]);
@@ -69,16 +116,10 @@ export default function PropertiesPage() {
   }
 
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) router.push("/login");
-    })();
-  }, [router]);
-
-  useEffect(() => {
+    if (!authChecked) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryUrl]);
+  }, [authChecked, queryUrl]);
 
   async function logout() {
     await supabase.auth.signOut();
@@ -131,7 +172,16 @@ export default function PropertiesPage() {
         />
       </div>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {error && (
+        <div style={{ marginTop: 12, padding: 12, border: "1px solid #f99", borderRadius: 10 }}>
+          <b>Error:</b> {error}
+          {debug && (
+            <pre style={{ marginTop: 10, overflowX: "auto", fontSize: 12 }}>
+              {JSON.stringify(debug, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
 
       <div style={{ marginTop: 14, overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -156,17 +206,12 @@ export default function PropertiesPage() {
                 </td>
                 <td style={td}>{r.deed_status ?? "-"}</td>
                 <td style={td}>{r.address ?? "missing"}</td>
-                <td style={td}>
-                  {(r.city ?? "-") + " / " + (r.zip ?? "-")}
-                </td>
+                <td style={td}>{(r.city ?? "-") + " / " + (r.zip ?? "-")}</td>
                 <td style={td}>{r.status ?? "-"}</td>
                 <td style={td}>{r.updated_at ?? "-"}</td>
                 <td style={td}>
                   <div style={{ display: "flex", gap: 10 }}>
-                    <button
-                      onClick={() => router.push(`/properties/${r.id}`)}
-                      style={{ padding: "6px 10px" }}
-                    >
+                    <button onClick={() => router.push(`/properties/${r.id}`)} style={{ padding: "6px 10px" }}>
                       Open
                     </button>
 
@@ -182,7 +227,7 @@ export default function PropertiesPage() {
               </tr>
             ))}
 
-            {!loading && rows.length === 0 && (
+            {!loading && rows.length === 0 && !error && (
               <tr>
                 <td colSpan={10} style={{ padding: 18 }}>
                   No properties found.
@@ -200,5 +245,5 @@ const td: React.CSSProperties = {
   padding: 10,
   borderBottom: "1px solid #eee",
   verticalAlign: "top",
-  whiteSpace: "nowrap"
+  whiteSpace: "nowrap",
 };
