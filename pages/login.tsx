@@ -33,4 +33,7 @@ export default function Login() {
       {error && <p>{error}</p>}
     </div>
   );
+  if (!supabase) {
+  return <div style={{ padding: 40 }}>Missing Supabase env vars.</div>;
+}
 }
