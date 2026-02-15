@@ -22,4 +22,7 @@ export default function Dashboard() {
       <p>Total lots: {count}</p>
     </div>
   );
+  if (!supabase) {
+  return <div style={{ padding: 40 }}>Missing Supabase env vars.</div>;
+}
 }
