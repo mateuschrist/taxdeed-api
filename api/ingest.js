@@ -1,5 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
+function mustEnv(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
+}
+
 function normalizeBid(v) {
   if (v === undefined || v === null || v === "") return null;
   const s = String(v).replace(/,/g, "").trim();
@@ -10,123 +16,61 @@ function normalizeBid(v) {
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
-    return res.status(405).json({ success: false, error: "Method not allowed" });
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  // ---- Auth: Bearer token ----
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
 
-  if (!process.env.INGEST_API_TOKEN) {
-    return res.status(500).json({
-      success: false,
-      error: "Server misconfigured: missing INGEST_API_TOKEN",
-    });
+  if (!process.env.INGEST_API_TOKEN || token !== process.env.INGEST_API_TOKEN) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
-  if (token !== process.env.INGEST_API_TOKEN) {
-    return res.status(401).json({ success: false, error: "Unauthorized" });
-  }
+  const SUPABASE_URL = mustEnv("SUPABASE_URL");
+  const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
 
-  // ---- Supabase env checks ----
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return res.status(500).json({
-      success: false,
-      error: "Server misconfigured: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
-    });
-  }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  // ---- Body ----
-  const data = req.body || {};
-  if (!data.node || String(data.node).trim() === "") {
-    return res.status(400).json({ success: false, error: "Missing node" });
-  }
-
-  const node = String(data.node).trim();
-
-  // Normalize location defaults by county/state
-  const county = (data.county ?? "Orange").toString().trim();
-  const state = (data.state ?? "FL").toString().trim().toUpperCase();
-
-  let auction_location = data.auction_location ?? null;
-  let auction_start_time = data.auction_start_time ?? null;
-  let auction_platform = data.auction_platform ?? null;
-  let auction_source_url = data.auction_source_url ?? null;
-
-  // Default (Orange County Tax Deed context)
-  // (Se depois você quiser fazer por condado, a gente transforma isso num map)
-  if (!auction_location && county.toLowerCase() === "orange" && state === "FL") {
-    auction_location = "109 E. Church Street, Suite 300, Orlando, FL 32801";
-    auction_start_time = "10:00 AM";
-    auction_platform = "Orange County Comptroller (Tax Deed Sales)";
-    auction_source_url = "https://www.occompt.com/Faq.aspx?TID=16";
-  }
-
-  const opening_bid = normalizeBid(data.opening_bid);
+  const body = req.body || {};
+  if (!body.node) return res.status(400).json({ ok: false, error: "Missing node" });
 
   const payload = {
-    // identifiers
-    county,
-    state,
-    node,
+    county: body.county ?? "Orange",
+    state: body.state ?? "FL",
+    node: String(body.node),
 
-    // core
-    tax_sale_id: data.tax_sale_id ?? null,
-    parcel_number: data.parcel_number ?? null,
-    sale_date: data.sale_date ?? null,
-    opening_bid,
-    deed_status: data.deed_status ?? null,
-    applicant_name: data.applicant_name ?? null,
-    pdf_url: data.pdf_url ?? null,
+    tax_sale_id: body.tax_sale_id ?? null,
+    parcel_number: body.parcel_number ?? null,
+    sale_date: body.sale_date ?? null,
+    opening_bid: normalizeBid(body.opening_bid),
+    deed_status: body.deed_status ?? null,
+    applicant_name: body.applicant_name ?? null,
 
-    // address
-    address: data.address ?? null,
-    city: data.city ?? null,
-    state_address: data.state_address ?? null,
-    zip: data.zip ?? null,
-    address_source_marker: data.address_source_marker ?? null,
+    pdf_url: body.pdf_url ?? null,
+    address: body.address ?? null,
+    city: body.city ?? null,
+    state_address: body.state_address ?? null,
+    zip: body.zip ?? null,
+    address_source_marker: body.address_source_marker ?? null,
 
-    // auction fields (NEW)
-    auction_location,
-    auction_start_time,
-    auction_platform,
-    auction_source_url,
+    status: body.status ?? "new",
+    notes: body.notes ?? null,
 
-    // admin/debug
-    status: data.status ?? "new",
-    notes: data.notes ?? null,
-
-    // opcional futuro:
-    // raw_ocr_text: data.raw_ocr_text ?? null,
+    // ✅ “se chegou via scraper, está ativo”
+    is_active: true,
+    removed_at: null,
+    updated_at: new Date().toISOString(),
   };
 
-  try {
-    const { data: upserted, error } = await supabase
-      .from("properties")
-      .upsert(payload, { onConflict: "node" })
-      .select("id,node")
-      .single();
+  const { data, error } = await supabase
+    .from("properties")
+    .upsert(payload, {
+      onConflict: "county,state,node", // usa o unique index
+    })
+    .select("id,node")
+    .single();
 
-    if (error) {
-      return res.status(500).json({ success: false, error: error.message });
-    }
+  if (error) return res.status(500).json({ ok: false, error: error.message });
 
-    return res.status(200).json({
-      success: true,
-      action: "upserted",
-      id: upserted.id,
-      node: upserted.node,
-    });
-  } catch (e) {
-    return res.status(500).json({
-      success: false,
-      error: "Internal server error",
-      message: e?.message ?? String(e),
-    });
-  }
+  return res.json({ ok: true, action: "upserted", id: data.id, node: data.node });
 }
