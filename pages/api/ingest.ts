@@ -1,7 +1,22 @@
 // pages/api/ingest.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
-import { mustEnv, requireBearer } from "./_auth";
+
+function requireBearer(req: NextApiRequest) {
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const expected = process.env.INGEST_API_TOKEN || "";
+  if (!expected || token !== expected) {
+    return false;
+  }
+  return true;
+}
+
+function mustEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
+}
 
 function normalizeBid(v: any) {
   if (v === undefined || v === null || v === "") return null;
@@ -17,21 +32,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ ok: false, error: "Method not allowed" });
     }
 
-    requireBearer(req);
+    if (!requireBearer(req)) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
 
     const SUPABASE_URL = mustEnv("SUPABASE_URL");
     const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
-
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const body = req.body || {};
-    if (!body.node) return res.status(400).json({ ok: false, error: "Missing node" });
+    const data = req.body || {};
+    if (!data.node) return res.status(400).json({ ok: false, error: "Missing node" });
 
-    const county = body.county ?? "Orange";
-    const state = body.state ?? "FL";
-    const node = String(body.node);
+    const county = data.county ?? "Orange";
+    const state = data.state ?? "FL";
+    const node = String(data.node);
 
-    // 1) Busca existente para manter status quando não enviado
+    // mantém status existente se não vier no payload (pra não “voltar” reviewed pra new)
     const { data: existing, error: exErr } = await supabase
       .from("properties")
       .select("id,status")
@@ -42,40 +58,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (exErr) return res.status(500).json({ ok: false, error: exErr.message });
 
-    const opening_bid = normalizeBid(body.opening_bid);
-
     const payload: any = {
       county,
       state,
       node,
-
-      tax_sale_id: body.tax_sale_id ?? null,
-      parcel_number: body.parcel_number ?? null,
-      sale_date: body.sale_date ?? null,
-      opening_bid,
-      deed_status: body.deed_status ?? null,
-      applicant_name: body.applicant_name ?? null,
-
-      pdf_url: body.pdf_url ?? null,
-      address: body.address ?? null,
-      city: body.city ?? null,
-      state_address: body.state_address ?? null,
-      zip: body.zip ?? null,
-      address_source_marker: body.address_source_marker ?? null,
-
-      notes: body.notes ?? null,
-
-      // ✅ sempre ativo se chegou via scraper
+      tax_sale_id: data.tax_sale_id ?? null,
+      parcel_number: data.parcel_number ?? null,
+      sale_date: data.sale_date ?? null,
+      opening_bid: normalizeBid(data.opening_bid),
+      deed_status: data.deed_status ?? null,
+      applicant_name: data.applicant_name ?? null,
+      pdf_url: data.pdf_url ?? null,
+      address: data.address ?? null,
+      city: data.city ?? null,
+      state_address: data.state_address ?? null,
+      zip: data.zip ?? null,
+      address_source_marker: data.address_source_marker ?? null,
+      notes: data.notes ?? null,
+      status: data.status ?? existing?.status ?? "new",
       is_active: true,
       removed_at: null,
       updated_at: new Date().toISOString(),
     };
 
-    // status: mantém o existente se não vier no payload
-    payload.status = body.status ?? existing?.status ?? "new";
-
-    // 2) Upsert (por county,state,node)
-    const { data, error } = await supabase
+    const { data: upserted, error } = await supabase
       .from("properties")
       .upsert(payload, { onConflict: "county,state,node" })
       .select("id,node")
@@ -87,11 +93,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ok: true,
       success: true,
       action: existing ? "updated" : "created",
-      id: data.id,
-      node: data.node,
+      id: upserted.id,
+      node: upserted.node,
     });
   } catch (e: any) {
-    const code = e?.statusCode || 500;
-    return res.status(code).json({ ok: false, error: e?.message ?? String(e) });
+    console.error(e);
+    return res.status(500).json({ ok: false, error: e?.message ?? String(e) });
   }
 }
