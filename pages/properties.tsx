@@ -126,9 +126,21 @@ export default function PropertiesPage() {
     router.push("/login");
   }
 
+  function getCountyLotUrl(node: string) {
+    // Orange County (eagleweb viewer)
+    return `https://or.occompt.com/recorder/eagleweb/viewDoc.jsp?node=${encodeURIComponent(node)}`;
+  }
+
   return (
     <div style={{ padding: 30 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "center",
+        }}
+      >
         <div>
           <h1 style={{ margin: 0 }}>Properties</h1>
           <p style={{ marginTop: 6, opacity: 0.75 }}>
@@ -158,7 +170,11 @@ export default function PropertiesPage() {
           <option value="exported">exported</option>
         </select>
 
-        <select value={hasAddress} onChange={(e) => setHasAddress(e.target.value)} style={{ padding: 10 }}>
+        <select
+          value={hasAddress}
+          onChange={(e) => setHasAddress(e.target.value)}
+          style={{ padding: 10 }}
+        >
           <option value="">All Address</option>
           <option value="true">Has address</option>
           <option value="false">Missing address</option>
@@ -187,8 +203,27 @@ export default function PropertiesPage() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              {["Sale Date", "Tax Sale", "Parcel", "Bid", "Deed Status", "Address", "City/ZIP", "Status", "Updated", "Actions"].map((h) => (
-                <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 10, whiteSpace: "nowrap" }}>
+              {[
+                "Sale Date",
+                "Tax Sale",
+                "Parcel",
+                "Bid",
+                "Deed Status",
+                "Address",
+                "City/ZIP",
+                "Status",
+                "Updated",
+                "Actions",
+              ].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    textAlign: "left",
+                    borderBottom: "1px solid #ddd",
+                    padding: 10,
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {h}
                 </th>
               ))}
@@ -202,25 +237,53 @@ export default function PropertiesPage() {
                 <td style={td}>{r.tax_sale_id ?? "-"}</td>
                 <td style={td}>{r.parcel_number ?? "-"}</td>
                 <td style={td}>
-                  {typeof r.opening_bid === "number" ? r.opening_bid.toFixed(2) : (r.opening_bid ? String(r.opening_bid) : "-")}
+                  {typeof r.opening_bid === "number"
+                    ? r.opening_bid.toFixed(2)
+                    : r.opening_bid
+                    ? String(r.opening_bid)
+                    : "-"}
                 </td>
                 <td style={td}>{r.deed_status ?? "-"}</td>
                 <td style={td}>{r.address ?? "missing"}</td>
                 <td style={td}>{(r.city ?? "-") + " / " + (r.zip ?? "-")}</td>
                 <td style={td}>{r.status ?? "-"}</td>
                 <td style={td}>{r.updated_at ?? "-"}</td>
+
                 <td style={td}>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={() => router.push(`/properties/${r.id}`)} style={{ padding: "6px 10px" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    {/* OPEN = link externo do condado */}
+                    <a
+                      href={getCountyLotUrl(r.node)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: "inline-block",
+                        padding: "6px 10px",
+                        border: "1px solid #999",
+                        borderRadius: 4,
+                        textDecoration: "none",
+                        color: "inherit",
+                        background: "#f5f5f5",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       Open
+                    </a>
+
+                    {/* DETAILS = abre tela interna do app */}
+                    <button
+                      onClick={() => router.push(`/properties/${r.id}`)}
+                      style={{ padding: "6px 10px", whiteSpace: "nowrap" }}
+                    >
+                      Details
                     </button>
 
                     {r.pdf_url ? (
-                      <a href={r.pdf_url} target="_blank" rel="noreferrer">
+                      <a href={r.pdf_url} target="_blank" rel="noreferrer" style={{ whiteSpace: "nowrap" }}>
                         Open PDF
                       </a>
                     ) : (
-                      <span style={{ opacity: 0.6 }}>No PDF</span>
+                      <span style={{ opacity: 0.6, whiteSpace: "nowrap" }}>No PDF</span>
                     )}
                   </div>
                 </td>
