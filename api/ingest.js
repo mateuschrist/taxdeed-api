@@ -47,6 +47,7 @@ export default async function handler(req, res) {
     applicant_name: body.applicant_name ?? null,
 
     pdf_url: body.pdf_url ?? null,
+    auction_source_url: data.auction_source_url ?? null,
     address: body.address ?? null,
     city: body.city ?? null,
     state_address: body.state_address ?? null,
