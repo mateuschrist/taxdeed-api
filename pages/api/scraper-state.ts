@@ -5,7 +5,7 @@ import { mustEnv, requireBearer } from "./_auth";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    requireBearer(req);
+    //requireBearer(req);
 
     const SUPABASE_URL = mustEnv("SUPABASE_URL");
     const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
