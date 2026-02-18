@@ -29,7 +29,6 @@ type Property = {
   status: string | null;
   notes: string | null;
 
-  // ✅ Auction fields (from API defaults)
   auction_location?: string | null;
   auction_start_time?: string | null;
   auction_platform?: string | null;
@@ -69,58 +68,53 @@ export default function PropertyDetail() {
   const [authChecked, setAuthChecked] = useState(false);
 
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const [item, setItem] = useState<Property | null>(null);
-  const [status, setStatus] = useState<string>("new");
-  const [notes, setNotes] = useState<string>("");
 
-  const countyUrl = useMemo(() => {
+  const fallbackCountyUrl = useMemo(() => {
     if (!item?.node) return "";
     return `https://or.occompt.com/recorder/eagleweb/viewDoc.jsp?node=${encodeURIComponent(
       item.node
     )}`;
   }, [item?.node]);
 
-  // ✅ Prefer the stored auction_source_url (from API / DB), fallback to computed countyUrl
-  const auctionSourceUrl = useMemo(() => {
-    const u = item?.auction_source_url;
-    if (u && typeof u === "string" && u.startsWith("http")) return u;
-    return countyUrl;
-  }, [item?.auction_source_url, countyUrl]);
-const fullAddress = useMemo(() => buildAddressLine(item), [item]);
+  // Prefer DB auction_source_url, else fallback to county viewDoc by node
+  const countyUrl = useMemo(() => {
+    const fromDb = (item?.auction_source_url || "").trim();
+    return fromDb ? fromDb : fallbackCountyUrl;
+  }, [item?.auction_source_url, fallbackCountyUrl]);
+
+  const fullAddress = useMemo(() => buildAddressLine(item || {}), [item]);
 
   const googleMapsUrl = useMemo(() => {
     if (!isUsableAddress(item)) return "";
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
+    return `https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}`;
   }, [item, fullAddress]);
 
   const streetViewUrl = useMemo(() => {
     if (!isUsableAddress(item)) return "";
-    return `https://www.google.com/maps/@?api=1&map_action=pano&query=${encodeURIComponent(fullAddress)}`;
+    return `https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}&layer=c&cbll=0,0`;
   }, [item, fullAddress]);
 
+  // Zillow: best-effort search by address line
   const zillowUrl = useMemo(() => {
     if (!isUsableAddress(item)) return "";
-    // Zillow funciona bem com address string — se não achar, o Google parcel search ajuda.
+    // Zillow accepts a "search query" path; spaces OK but we encode
     return `https://www.zillow.com/homes/${encodeURIComponent(fullAddress)}_rb/`;
   }, [item, fullAddress]);
 
+  // Orange County Property Appraiser (OCPA) – best-effort: search by parcel OR address
   const ocpaUrl = useMemo(() => {
-    // Orange County Property Appraiser (OCPA) search
-    // Se tiver parcel_number, melhor ainda.
     const parcel = (item?.parcel_number || "").trim();
     if (parcel) {
-      return `https://www.ocpafl.org/Searches/ParcelSearch.aspx?pid=${encodeURIComponent(parcel)}`;
+      return `https://www.ocpafl.org/search?search=${encodeURIComponent(parcel)}`;
     }
     if (isUsableAddress(item)) {
-      return `https://www.ocpafl.org/Searches/AddressSearch.aspx?address=${encodeURIComponent(
-        item.address
-      )}`;
+      return `https://www.ocpafl.org/search?search=${encodeURIComponent(fullAddress)}`;
     }
-    return "https://www.ocpafl.org/";
-  }, [item]);
+    return "";
+  }, [item, fullAddress]);
 
   const googleParcelSearchUrl = useMemo(() => {
     const parcel = (item?.parcel_number || "").trim();
@@ -128,8 +122,8 @@ const fullAddress = useMemo(() => buildAddressLine(item), [item]);
     return `https://www.google.com/search?q=${encodeURIComponent(
       `Orange County FL parcel ${parcel}`
     )}`;
-  }, [item]);
-  
+  }, [item?.parcel_number]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -176,8 +170,6 @@ const fullAddress = useMemo(() => buildAddressLine(item), [item]);
       if (!record) throw new Error("Not found");
 
       setItem(record);
-      setStatus(record.status ?? "new");
-      setNotes(record.notes ?? "");
     } catch (e: any) {
       setError(e?.message || "Failed to load property");
       setItem(null);
@@ -191,38 +183,6 @@ const fullAddress = useMemo(() => buildAddressLine(item), [item]);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, id]);
-
-  async function save() {
-    if (!id) return;
-    setSaving(true);
-    setError("");
-
-    try {
-      const res = await fetch(`/api/properties/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, notes }),
-      });
-
-      const text = await res.text();
-      let json: any = null;
-      try {
-        json = JSON.parse(text);
-      } catch {}
-
-      if (!res.ok) {
-        const msg =
-          json?.message || json?.error || text?.slice(0, 200) || `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-
-      await load();
-    } catch (e: any) {
-      setError(e?.message || "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   if (!authChecked) {
     return <div style={{ padding: 30 }}>Checking auth...</div>;
@@ -255,7 +215,7 @@ const fullAddress = useMemo(() => buildAddressLine(item), [item]);
 
           {item?.pdf_url && (
             <a href={item.pdf_url} target="_blank" rel="noreferrer" style={linkBtn}>
-              Open PDF
+              PDF
             </a>
           )}
 
@@ -278,16 +238,6 @@ const fullAddress = useMemo(() => buildAddressLine(item), [item]);
 
       {!loading && item && (
         <div style={{ marginTop: 14, display: "grid", gap: 12, maxWidth: 980 }}>
-          {/* ✅ NEW CARD: Auction info */}
-
-           <Card title="Address">
-            <Row label="Address" value={item.address ? item.address : "missing"} />
-            <Row label="City" value={safe(item.city)} />
-            <Row label="State (address)" value={safe(item.state_address)} />
-            <Row label="ZIP" value={safe(item.zip)} />
-            <Row label="Source Marker" value={safe(item.address_source_marker)} />
-          </Card>
-          
           <Card title="Core (Auction Data)">
             <Row label="Node" value={item.node} />
             <Row label="Tax Sale ID" value={safe(item.tax_sale_id)} />
@@ -298,7 +248,71 @@ const fullAddress = useMemo(() => buildAddressLine(item), [item]);
             <Row label="Applicant Name" value={safe(item.applicant_name)} />
             <Row label="County / State" value={`${safe(item.county)} / ${safe(item.state)}`} />
           </Card>
-       
+
+          <Card title="Auction Info (Defaults)">
+            <Row label="Location" value={safe(item.auction_location)} />
+            <Row label="Start Time" value={safe(item.auction_start_time)} />
+            <Row label="Platform" value={safe(item.auction_platform)} />
+          </Card>
+
+          <Card title="Address">
+            <Row label="Address" value={item.address ? item.address : "missing"} />
+            <Row label="City" value={safe(item.city)} />
+            <Row label="State (address)" value={safe(item.state_address)} />
+            <Row label="ZIP" value={safe(item.zip)} />
+            <Row label="Source Marker" value={safe(item.address_source_marker)} />
+          </Card>
+
+          <Card title="Investor Mode (Location)">
+            {!isUsableAddress(item) ? (
+              <div style={{ opacity: 0.7 }}>
+                Missing full address (need Address + City + State) to generate map links.
+              </div>
+            ) : (
+              <>
+                <div style={{ border: "1px solid #eee", borderRadius: 10, overflow: "hidden" }}>
+                  <iframe
+                    title="Map Preview"
+                    width="100%"
+                    height="260"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    src={`https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}&output=embed`}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                  <a href={zillowUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                    Zillow
+                  </a>
+
+                  <a href={googleMapsUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                    Google Maps
+                  </a>
+
+                  <a href={streetViewUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                    Street View
+                  </a>
+
+                  {ocpaUrl ? (
+                    <a href={ocpaUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                      OCPA (Appraiser)
+                    </a>
+                  ) : null}
+
+                  {googleParcelSearchUrl ? (
+                    <a href={googleParcelSearchUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                      Parcel Search (Google)
+                    </a>
+                  ) : null}
+                </div>
+
+                <div style={{ marginTop: 10, opacity: 0.75 }}>
+                  <b>Address:</b> {fullAddress}
+                </div>
+              </>
+            )}
+          </Card>
 
           <Card title="Links">
             <Row
@@ -325,82 +339,11 @@ const fullAddress = useMemo(() => buildAddressLine(item), [item]);
                 )
               }
             />
-         
           </Card>
 
-          <Card title="Investor Mode (Location)">
-            {!isUsableAddress(item) ? (
-              <div style={{ opacity: 0.7 }}>
-                Missing full address (need Address + City + State) to generate map links.
-              </div>
-            ) : (
-              <>
-                {/* Map Preview */}
-                <div style={{ border: "1px solid #eee", borderRadius: 10, overflow: "hidden" }}>
-                  <iframe
-                    title="Map Preview"
-                    width="100%"
-                    height="260"
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    src={`https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}&output=embed`}
-                  />
-                </div>
-
-                {/* Buttons */}
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                  <a href={zillowUrl} target="_blank" rel="noreferrer" style={linkBtn}>
-                    Zillow
-                  </a>
-
-                  <a href={googleMapsUrl} target="_blank" rel="noreferrer" style={linkBtn}>
-                    Google Maps
-                  </a>
-
-                  <a href={streetViewUrl} target="_blank" rel="noreferrer" style={linkBtn}>
-                    Street View
-                  </a>
-
-                  <a href={ocpaUrl} target="_blank" rel="noreferrer" style={linkBtn}>
-                    OCPA (Appraiser)
-                  </a>
-
-                  {googleParcelSearchUrl ? (
-                    <a href={googleParcelSearchUrl} target="_blank" rel="noreferrer" style={linkBtn}>
-                      Parcel Search (Google)
-                    </a>
-                  ) : null}
-                </div>
-
-                {/* Quick info */}
-                <div style={{ marginTop: 10, opacity: 0.75 }}>
-                  <b>Address:</b> {fullAddress}
-                </div>
-              </>
-            )}
+          <Card title="Updated">
+            <Row label="Updated At" value={safe(item.updated_at)} />
           </Card>
-          
-<Card title="Auction (Orange County)">
-            <Row label="Location" value={safe(item.auction_location)} />
-            <Row label="Start Time" value={safe(item.auction_start_time)} />
-            <Row label="Platform" value={safe(item.auction_platform)} />
-            <Row
-              label="County Source"
-              value={
-                auctionSourceUrl ? (
-                  <a href={auctionSourceUrl} target="_blank" rel="noreferrer">
-                    Open county page
-                  </a>
-                ) : (
-                  <span>-</span>
-                )
-              }
-            />
-          </Card>
-
-         <Card title="Updated">
-  <Row label="Last Update" value={safe(item.updated_at)} />
-</Card>
 
           {"raw_ocr_text" in item && item.raw_ocr_text ? (
             <Card title="Raw OCR Text (debug)">
@@ -442,3 +385,12 @@ const linkBtn: React.CSSProperties = {
   color: "inherit",
   background: "#f5f5f5",
 };
+
+function buildAddressLine(item: any) {
+  const parts = [item?.address, item?.city, item?.state_address, item?.zip].filter(Boolean);
+  return parts.join(", ");
+}
+
+function isUsableAddress(item: any) {
+  return Boolean(item?.address && item?.city && item?.state_address);
+}
