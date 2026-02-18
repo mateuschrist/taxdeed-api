@@ -1,4 +1,4 @@
-l// pages/api/scraper-state.ts
+// pages/api/scraper-state.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { mustEnv, requireBearer } from "./_auth";
