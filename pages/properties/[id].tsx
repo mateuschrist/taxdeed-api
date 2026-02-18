@@ -239,24 +239,7 @@ export default function PropertyDetail() {
       {!loading && item && (
         <div style={{ marginTop: 14, display: "grid", gap: 12, maxWidth: 980 }}>
           {/* ✅ NEW CARD: Auction info */}
-          <Card title="Auction (Orange County)">
-            <Row label="Location" value={safe(item.auction_location)} />
-            <Row label="Start Time" value={safe(item.auction_start_time)} />
-            <Row label="Platform" value={safe(item.auction_platform)} />
-            <Row
-              label="County Source"
-              value={
-                auctionSourceUrl ? (
-                  <a href={auctionSourceUrl} target="_blank" rel="noreferrer">
-                    Open county page
-                  </a>
-                ) : (
-                  <span>-</span>
-                )
-              }
-            />
-          </Card>
-
+          
           <Card title="Core (Auction Data)">
             <Row label="Node" value={item.node} />
             <Row label="Tax Sale ID" value={safe(item.tax_sale_id)} />
@@ -301,46 +284,29 @@ export default function PropertyDetail() {
                 )
               }
             />
+         
+          </Card>
+<Card title="Auction (Orange County)">
+            <Row label="Location" value={safe(item.auction_location)} />
+            <Row label="Start Time" value={safe(item.auction_start_time)} />
+            <Row label="Platform" value={safe(item.auction_platform)} />
+            <Row
+              label="County Source"
+              value={
+                auctionSourceUrl ? (
+                  <a href={auctionSourceUrl} target="_blank" rel="noreferrer">
+                    Open county page
+                  </a>
+                ) : (
+                  <span>-</span>
+                )
+              }
+            />
           </Card>
 
-          <Card title="Admin">
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ marginBottom: 6, opacity: 0.7 }}>Status</div>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  style={{ padding: 10 }}
-                >
-                  <option value="new">new</option>
-                  <option value="reviewed">reviewed</option>
-                  <option value="skipped">skipped</option>
-                  <option value="exported">exported</option>
-                </select>
-              </div>
-
-              <div style={{ flex: 1, minWidth: 260 }}>
-                <div style={{ marginBottom: 6, opacity: 0.7 }}>Notes</div>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  style={{ width: "100%", minHeight: 100, padding: 10 }}
-                  placeholder="Add notes..."
-                />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <button onClick={save} disabled={saving} style={{ padding: 10 }}>
-                {saving ? "Saving..." : "Save"}
-              </button>
-            </div>
-          </Card>
-
-          <Card title="Timestamps">
-            <Row label="Created At" value={safe(item.created_at)} />
-            <Row label="Updated At" value={safe(item.updated_at)} />
-          </Card>
+         <Card title="Updated">
+  <Row label="Last Update" value={safe(item.updated_at)} />
+</Card>
 
           {"raw_ocr_text" in item && item.raw_ocr_text ? (
             <Card title="Raw OCR Text (debug)">
