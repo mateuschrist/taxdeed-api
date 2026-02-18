@@ -29,6 +29,12 @@ type Property = {
   status: string | null;
   notes: string | null;
 
+  // ✅ Auction fields (from API defaults)
+  auction_location?: string | null;
+  auction_start_time?: string | null;
+  auction_platform?: string | null;
+  auction_source_url?: string | null;
+
   created_at: string | null;
   updated_at: string | null;
 };
@@ -76,6 +82,13 @@ export default function PropertyDetail() {
       item.node
     )}`;
   }, [item?.node]);
+
+  // ✅ Prefer the stored auction_source_url (from API / DB), fallback to computed countyUrl
+  const auctionSourceUrl = useMemo(() => {
+    const u = item?.auction_source_url;
+    if (u && typeof u === "string" && u.startsWith("http")) return u;
+    return countyUrl;
+  }, [item?.auction_source_url, countyUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,6 +238,25 @@ export default function PropertyDetail() {
 
       {!loading && item && (
         <div style={{ marginTop: 14, display: "grid", gap: 12, maxWidth: 980 }}>
+          {/* ✅ NEW CARD: Auction info */}
+          <Card title="Auction (Orange County)">
+            <Row label="Location" value={safe(item.auction_location)} />
+            <Row label="Start Time" value={safe(item.auction_start_time)} />
+            <Row label="Platform" value={safe(item.auction_platform)} />
+            <Row
+              label="County Source"
+              value={
+                auctionSourceUrl ? (
+                  <a href={auctionSourceUrl} target="_blank" rel="noreferrer">
+                    Open county page
+                  </a>
+                ) : (
+                  <span>-</span>
+                )
+              }
+            />
+          </Card>
+
           <Card title="Core (Auction Data)">
             <Row label="Node" value={item.node} />
             <Row label="Tax Sale ID" value={safe(item.tax_sale_id)} />
@@ -275,7 +307,11 @@ export default function PropertyDetail() {
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <div>
                 <div style={{ marginBottom: 6, opacity: 0.7 }}>Status</div>
-                <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ padding: 10 }}>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  style={{ padding: 10 }}
+                >
                   <option value="new">new</option>
                   <option value="reviewed">reviewed</option>
                   <option value="skipped">skipped</option>
@@ -306,7 +342,6 @@ export default function PropertyDetail() {
             <Row label="Updated At" value={safe(item.updated_at)} />
           </Card>
 
-          {/* Se um dia você ativar raw_ocr_text no banco, isso já fica pronto */}
           {"raw_ocr_text" in item && item.raw_ocr_text ? (
             <Card title="Raw OCR Text (debug)">
               <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>
