@@ -238,6 +238,13 @@ export default function PropertyDetail() {
 
       {!loading && item && (
         <div style={{ marginTop: 14, display: "grid", gap: 12, maxWidth: 980 }}>
+         
+           <Card title="Auction Info (Defaults)">
+            <Row label="Location" value={safe(item.auction_location)} />
+            <Row label="Start Time" value={safe(item.auction_start_time)} />
+            <Row label="Platform" value={safe(item.auction_platform)} />
+          </Card>
+          
           <Card title="Core (Auction Data)">
             <Row label="Node" value={item.node} />
             <Row label="Tax Sale ID" value={safe(item.tax_sale_id)} />
@@ -247,20 +254,14 @@ export default function PropertyDetail() {
             <Row label="Deed Status" value={safe(item.deed_status)} />
             <Row label="Applicant Name" value={safe(item.applicant_name)} />
             <Row label="County / State" value={`${safe(item.county)} / ${safe(item.state)}`} />
-          </Card>
-
-          <Card title="Auction Info (Defaults)">
-            <Row label="Location" value={safe(item.auction_location)} />
-            <Row label="Start Time" value={safe(item.auction_start_time)} />
-            <Row label="Platform" value={safe(item.auction_platform)} />
-          </Card>
+          </Card>       
 
           <Card title="Address">
             <Row label="Address" value={item.address ? item.address : "missing"} />
             <Row label="City" value={safe(item.city)} />
             <Row label="State (address)" value={safe(item.state_address)} />
             <Row label="ZIP" value={safe(item.zip)} />
-            <Row label="Source Marker" value={safe(item.address_source_marker)} />
+           
           </Card>
 
           <Card title="Investor Mode (Location)">
