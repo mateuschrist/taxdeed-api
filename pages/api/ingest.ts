@@ -6,10 +6,7 @@ function requireBearer(req: NextApiRequest) {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const expected = process.env.INGEST_API_TOKEN || "";
-  if (!expected || token !== expected) {
-    return false;
-  }
-  return true;
+  return !!expected && token === expected;
 }
 
 function mustEnv(name: string) {
@@ -40,14 +37,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const SERVICE_ROLE = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const data = req.body || {};
-    if (!data.node) return res.status(400).json({ ok: false, error: "Missing node" });
+    const body = req.body || {};
+    if (!body.node) {
+      return res.status(400).json({ ok: false, error: "Missing node" });
+    }
 
-    const county = data.county ?? "Orange";
-    const state = data.state ?? "FL";
-    const node = String(data.node);
+    const county = body.county ?? "Orange";
+    const state = body.state ?? "FL";
+    const node = String(body.node);
 
-    // mantém status existente se não vier no payload (pra não “voltar” reviewed pra new)
+    // mantém status existente se não vier no payload (pra não “voltar” reviewed -> new)
     const { data: existing, error: exErr } = await supabase
       .from("properties")
       .select("id,status")
@@ -56,28 +55,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("node", node)
       .maybeSingle();
 
-    if (exErr) return res.status(500).json({ ok: false, error: exErr.message });
+    if (exErr) {
+      return res.status(500).json({ ok: false, error: exErr.message });
+    }
+
+    // ✅ Orange County: local e horário fixos (por enquanto)
+    // (quando você expandir pra todos os condados da FL, a gente muda pra uma tabela "counties" / "auction_sites")
+    const auction_location = "109 E Church St, Orlando, FL 32801";
+    const auction_time = "10:00 AM";
 
     const payload: any = {
       county,
       state,
       node,
-      tax_sale_id: data.tax_sale_id ?? null,
-      parcel_number: data.parcel_number ?? null,
-      sale_date: data.sale_date ?? null,
-      opening_bid: normalizeBid(data.opening_bid),
-      deed_status: data.deed_status ?? null,
-      applicant_name: data.applicant_name ?? null,
-      pdf_url: data.pdf_url ?? null,
-      address: data.address ?? null,
-      city: data.city ?? null,
-      state_address: data.state_address ?? null,
-      zip: data.zip ?? null,
-      address_source_marker: data.address_source_marker ?? null,
-      notes: data.notes ?? null,
-      status: data.status ?? existing?.status ?? "new",
+
+      // link principal do condado (viewer link)
+      auction_source_url: body.auction_source_url ?? null,
+
+      // ✅ FIXO PARA ORANGE COUNTY
+      auction_location,
+      auction_time,
+
+      tax_sale_id: body.tax_sale_id ?? null,
+      parcel_number: body.parcel_number ?? null,
+      sale_date: body.sale_date ?? null,
+      opening_bid: normalizeBid(body.opening_bid),
+      deed_status: body.deed_status ?? null,
+      applicant_name: body.applicant_name ?? null,
+
+      pdf_url: body.pdf_url ?? null,
+
+      address: body.address ?? null,
+      city: body.city ?? null,
+      state_address: body.state_address ?? null,
+      zip: body.zip ?? null,
+      address_source_marker: body.address_source_marker ?? null,
+
+      notes: body.notes ?? null,
+
+      status: body.status ?? existing?.status ?? "new",
+
+      // change detection / lifecycle
       is_active: true,
       removed_at: null,
+
       updated_at: new Date().toISOString(),
     };
 
@@ -87,7 +108,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .select("id,node")
       .single();
 
-    if (error) return res.status(500).json({ ok: false, error: error.message });
+    if (error) {
+      return res.status(500).json({ ok: false, error: error.message });
+    }
 
     return res.json({
       ok: true,
