@@ -89,7 +89,47 @@ export default function PropertyDetail() {
     if (u && typeof u === "string" && u.startsWith("http")) return u;
     return countyUrl;
   }, [item?.auction_source_url, countyUrl]);
+const fullAddress = useMemo(() => buildAddressLine(item), [item]);
 
+  const googleMapsUrl = useMemo(() => {
+    if (!isUsableAddress(item)) return "";
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
+  }, [item, fullAddress]);
+
+  const streetViewUrl = useMemo(() => {
+    if (!isUsableAddress(item)) return "";
+    return `https://www.google.com/maps/@?api=1&map_action=pano&query=${encodeURIComponent(fullAddress)}`;
+  }, [item, fullAddress]);
+
+  const zillowUrl = useMemo(() => {
+    if (!isUsableAddress(item)) return "";
+    // Zillow funciona bem com address string — se não achar, o Google parcel search ajuda.
+    return `https://www.zillow.com/homes/${encodeURIComponent(fullAddress)}_rb/`;
+  }, [item, fullAddress]);
+
+  const ocpaUrl = useMemo(() => {
+    // Orange County Property Appraiser (OCPA) search
+    // Se tiver parcel_number, melhor ainda.
+    const parcel = (item?.parcel_number || "").trim();
+    if (parcel) {
+      return `https://www.ocpafl.org/Searches/ParcelSearch.aspx?pid=${encodeURIComponent(parcel)}`;
+    }
+    if (isUsableAddress(item)) {
+      return `https://www.ocpafl.org/Searches/AddressSearch.aspx?address=${encodeURIComponent(
+        item.address
+      )}`;
+    }
+    return "https://www.ocpafl.org/";
+  }, [item]);
+
+  const googleParcelSearchUrl = useMemo(() => {
+    const parcel = (item?.parcel_number || "").trim();
+    if (!parcel) return "";
+    return `https://www.google.com/search?q=${encodeURIComponent(
+      `Orange County FL parcel ${parcel}`
+    )}`;
+  }, [item]);
+  
   useEffect(() => {
     let cancelled = false;
 
@@ -239,6 +279,14 @@ export default function PropertyDetail() {
       {!loading && item && (
         <div style={{ marginTop: 14, display: "grid", gap: 12, maxWidth: 980 }}>
           {/* ✅ NEW CARD: Auction info */}
+
+           <Card title="Address">
+            <Row label="Address" value={item.address ? item.address : "missing"} />
+            <Row label="City" value={safe(item.city)} />
+            <Row label="State (address)" value={safe(item.state_address)} />
+            <Row label="ZIP" value={safe(item.zip)} />
+            <Row label="Source Marker" value={safe(item.address_source_marker)} />
+          </Card>
           
           <Card title="Core (Auction Data)">
             <Row label="Node" value={item.node} />
@@ -250,14 +298,7 @@ export default function PropertyDetail() {
             <Row label="Applicant Name" value={safe(item.applicant_name)} />
             <Row label="County / State" value={`${safe(item.county)} / ${safe(item.state)}`} />
           </Card>
-
-          <Card title="Address">
-            <Row label="Address" value={item.address ? item.address : "missing"} />
-            <Row label="City" value={safe(item.city)} />
-            <Row label="State (address)" value={safe(item.state_address)} />
-            <Row label="ZIP" value={safe(item.zip)} />
-            <Row label="Source Marker" value={safe(item.address_source_marker)} />
-          </Card>
+       
 
           <Card title="Links">
             <Row
@@ -286,6 +327,59 @@ export default function PropertyDetail() {
             />
          
           </Card>
+
+          <Card title="Investor Mode (Location)">
+            {!isUsableAddress(item) ? (
+              <div style={{ opacity: 0.7 }}>
+                Missing full address (need Address + City + State) to generate map links.
+              </div>
+            ) : (
+              <>
+                {/* Map Preview */}
+                <div style={{ border: "1px solid #eee", borderRadius: 10, overflow: "hidden" }}>
+                  <iframe
+                    title="Map Preview"
+                    width="100%"
+                    height="260"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    src={`https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}&output=embed`}
+                  />
+                </div>
+
+                {/* Buttons */}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                  <a href={zillowUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                    Zillow
+                  </a>
+
+                  <a href={googleMapsUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                    Google Maps
+                  </a>
+
+                  <a href={streetViewUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                    Street View
+                  </a>
+
+                  <a href={ocpaUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                    OCPA (Appraiser)
+                  </a>
+
+                  {googleParcelSearchUrl ? (
+                    <a href={googleParcelSearchUrl} target="_blank" rel="noreferrer" style={linkBtn}>
+                      Parcel Search (Google)
+                    </a>
+                  ) : null}
+                </div>
+
+                {/* Quick info */}
+                <div style={{ marginTop: 10, opacity: 0.75 }}>
+                  <b>Address:</b> {fullAddress}
+                </div>
+              </>
+            )}
+          </Card>
+          
 <Card title="Auction (Orange County)">
             <Row label="Location" value={safe(item.auction_location)} />
             <Row label="Start Time" value={safe(item.auction_start_time)} />
