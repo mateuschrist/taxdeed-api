@@ -2,12 +2,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 
-function mustEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
-
 function getServerSupabase() {
   // ✅ backend SEMPRE usa service role
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -20,15 +14,18 @@ function getServerSupabase() {
 }
 
 function applyOrangeAuctionDefaults(row: any) {
-  // ✅ se for Orange County, preenche automaticamente (sem depender do scraper)
   const county = (row?.county || "").toString().toLowerCase();
   const state = (row?.state || "").toString().toUpperCase();
 
   if (county === "orange" && state === "FL") {
     return {
       ...row,
+      // ✅ defaults Orange County
       auction_location: row?.auction_location ?? "109 E Church St, Orlando, FL 32801",
-      auction_time: row?.auction_time ?? "10:00 AM",
+      auction_start_time: row?.auction_start_time ?? "10:00 AM",
+      auction_platform: row?.auction_platform ?? "In-Person",
+      // ✅ se você já salva o link do “viewer” do condado, usa ele como fonte
+      auction_source_url: row?.auction_source_url ?? row?.tax_sale_url ?? null,
     };
   }
 
@@ -48,16 +45,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // GET SINGLE PROPERTY
     // ===========================
     if (req.method === "GET") {
-      const { data, error } = await supabase
-        .from("properties")
-        .select("*")
-        .eq("id", id)
-        .single();
-
+      const { data, error } = await supabase.from("properties").select("*").eq("id", id).single();
       if (error) return res.status(500).json({ ok: false, message: error.message });
 
-      const patched = applyOrangeAuctionDefaults(data);
-      return res.status(200).json({ ok: true, data: patched });
+      return res.status(200).json({ ok: true, data: applyOrangeAuctionDefaults(data) });
     }
 
     // ===========================
@@ -81,8 +72,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (error) return res.status(500).json({ ok: false, message: error.message });
 
-      const patched = applyOrangeAuctionDefaults(data);
-      return res.status(200).json({ ok: true, data: patched });
+      return res.status(200).json({ ok: true, data: applyOrangeAuctionDefaults(data) });
     }
 
     res.setHeader("Allow", "GET, PUT");
