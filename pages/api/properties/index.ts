@@ -1,56 +1,79 @@
+// pages/api/properties/index.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 
 function getServerSupabase() {
+  // ✅ backend SEMPRE usa service role
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const service = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
   if (!url) throw new Error("Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)");
-  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY)");
+  if (!service) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
 
-  return createClient(url, key);
+  return createClient(url, service);
+}
+
+function asStr(v: any) {
+  if (v === undefined || v === null) return "";
+  return String(v);
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
   try {
     const supabase = getServerSupabase();
 
-    const { status, has_address, search, limit = "200", offset = "0" } = req.query;
-
-    let q = supabase.from("properties").select("*", { count: "exact" });
-
-    if (status) q = q.eq("status", String(status));
-
-    if (has_address === "true") q = q.not("address", "is", null);
-    if (has_address === "false") q = q.is("address", null);
-
-    if (search) {
-      const s = String(search).replace(/"/g, "");
-      q = q.or(`node.ilike.%${s}%,parcel_number.ilike.%${s}%,address.ilike.%${s}%`);
+    if (req.method !== "GET") {
+      res.setHeader("Allow", "GET");
+      return res.status(405).json({ ok: false, error: "Method not allowed" });
     }
 
-    const lim = Math.min(parseInt(String(limit), 10) || 200, 1000);
-    const off = Math.max(parseInt(String(offset), 10) || 0, 0);
+    // ✅ query params
+    const county = asStr(req.query.county).trim(); // ex: Orange
+    const q = asStr(req.query.q).trim();           // busca simples
+    const limitRaw = asStr(req.query.limit).trim();
+    const limit = Math.min(Math.max(Number(limitRaw || 200), 1), 1000); // 1..1000
 
-    q = q.order("updated_at", { ascending: false }).range(off, off + lim - 1);
+    // ✅ base query
+    let query = supabase
+      .from("properties")
+      .select(
+        "id,county,state,node,sale_date,opening_bid,address,city,state_address,zip,updated_at",
+        { count: "exact" }
+      )
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(limit);
 
-    const { data, error, count } = await q;
-
-    if (error) {
-      console.error("Supabase query error:", error);
-      return res.status(500).json({ ok: false, message: error.message });
+    // ✅ filter by county (case-insensitive) using ilike
+    if (county) {
+      query = query.ilike("county", county);
     }
+
+    // ✅ basic search (server-side) – optional
+    // busca por address OR parcel_number OR tax_sale_id OR node
+    // (mantém simples e rápido)
+    if (q) {
+      // escape % e _ do ilike
+      const esc = q.replace(/[%_]/g, (m) => `\\${m}`);
+      const like = `%${esc}%`;
+      query = query.or(
+        [
+          `address.ilike.${like}`,
+          `parcel_number.ilike.${like}`,
+          `tax_sale_id.ilike.${like}`,
+          `node.ilike.${like}`,
+          `city.ilike.${like}`,
+        ].join(",")
+      );
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) return res.status(500).json({ ok: false, message: error.message });
 
     return res.status(200).json({
       ok: true,
-      count: count ?? data?.length ?? 0,
-      limit: lim,
-      offset: off,
+      count: count ?? null,
       data: data ?? [],
     });
   } catch (e: any) {
